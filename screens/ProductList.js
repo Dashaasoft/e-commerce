@@ -17,8 +17,15 @@ import {
 import Header from "./Header";
 import Icon from "react-native-vector-icons/Ionicons";
 import { Linking } from "react-native";
+import { ImageBackground } from "react-native";
+import { useNavigation, useRoute } from "@react-navigation/native";
+import { MaterialIcons } from "@expo/vector-icons";
 
-const ProductList = ({ navigation, route }) => {
+const ProductList = () => {
+  const navigation = useNavigation();
+  const route = useRoute();
+  const { category, subCategory, gender, reset } = route.params || {};
+
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([{ _id: 0, name: "Бүгд" }]);
   const [selectedCategory, setSelectedCategory] = useState(
@@ -39,15 +46,18 @@ const ProductList = ({ navigation, route }) => {
     gender: null,
     size: null,
   });
+  const [searchText, setSearchText] = useState("");
 
   const handleSearchSubmit = (query) => {
     setSearchQuery(query);
   };
 
-  // Fetch products data
+  // Бүтээгдэхүүний мэдээллийг татах функц
+
   const fetchProducts = useCallback(() => {
     setLoading(true);
-    fetch("http://192.168.36.181:5000/api/products")
+    // Заасан URL-аас бүтээгдэхүүний мэдээллийг татах хүсэлт илгээх
+    fetch("http://10.150.35.107:5000/api/products")
       .then((response) => {
         if (!response.ok) {
           throw new Error("Network response was not ok");
@@ -55,7 +65,16 @@ const ProductList = ({ navigation, route }) => {
         return response.json();
       })
       .then((data) => {
-        setProducts(data);
+        // Татаж авсан өгөгдлийг консол дээр хэвлэх (хөгжүүлэлтийн явцад шалгах зорилготой)
+
+        console.log("Fetched products:", data); // Add logging
+        // Handle the new API response structure
+        if (data.success && Array.isArray(data.data)) {
+          // Дэлгэц шинэчлэх (refreshing) төлөвийг false болгох (pull-to-refresh үйлдлийн үед)
+          setProducts(data.data);
+        } else {
+          setProducts([]);
+        }
         setLoading(false);
         setIsRefreshing(false);
       })
@@ -68,7 +87,7 @@ const ProductList = ({ navigation, route }) => {
 
   // Fetch categories data
   const fetchCategories = useCallback(() => {
-    fetch("http://192.168.36.181:5000/api/categories")
+    fetch("http://10.150.35.107:5000/api/categories")
       .then((response) => {
         if (!response.ok) {
           throw new Error("Network response was not ok");
@@ -76,16 +95,23 @@ const ProductList = ({ navigation, route }) => {
         return response.json();
       })
       .then((data) => {
-        // Add "Бүгд" (All) category at the beginning
-        setCategories([{ _id: 0, name: "Бүгд" }, ...data]);
+        console.log("Fetched categories:", data); // Add logging
+        // Handle the new API response structure
+        if (data.success && Array.isArray(data.data)) {
+          // Add "Бүгд" (All) category at the beginning
+          setCategories([{ _id: 0, name: "Бүгд" }, ...data.data]);
 
-        // If a category was passed via route params, select it
-        if (route.params?.category) {
-          setSelectedCategory(route.params.category);
+          // If a category was passed via route params, select it
+          if (route.params?.category) {
+            setSelectedCategory(route.params.category);
+          }
+        } else {
+          setCategories([{ _id: 0, name: "Бүгд" }]);
         }
       })
       .catch((error) => {
         console.error("Error fetching categories: ", error.message);
+        setCategories([{ _id: 0, name: "Бүгд" }]);
       });
   }, [route.params?.category]);
 
@@ -193,39 +219,30 @@ const ProductList = ({ navigation, route }) => {
   // Replace the filteredProducts variable in ProductList.js with this improved version
   const filteredProducts = products
     .filter((product) => {
-      if (!route.params) return true;
+      const { category, subCategory, gender, size } = route.params || {};
 
-      const { category, subCategory, gender, size } = route.params;
-
-      const matchesCategory =
-        !category || category === "Бүгд" || product.category === category;
-      const matchesSubCategory =
-        !subCategory || product.subCategory === subCategory;
-      const matchesGender = !gender || product.gender === gender;
-
-      let matchesSize = true;
-      if (size) {
-        if (product.category === "Shoes" || product.category === "Гутал") {
-          matchesSize =
-            product.sizeQuantity?.shoeSizes &&
-            Object.keys(product.sizeQuantity.shoeSizes).includes(size);
-        } else {
-          matchesSize =
-            product.sizeQuantity?.clothingSizes &&
-            Object.keys(product.sizeQuantity.clothingSizes).includes(size);
-        }
+      // Хайлт байгаа үед
+      if (searchQuery) {
+        return product.name
+          .toLowerCase()
+          .includes(searchQuery.trim().toLowerCase());
       }
 
-      const matchesSearch =
-        !searchQuery ||
-        product.name.toLowerCase().includes(searchQuery.toLowerCase());
+      // `category` нь name-аар хадгалагдсан гэж үзнэ
+      const matchesCategory =
+        !category ||
+        category === "Бүгд" ||
+        (product.category &&
+          (typeof product.category === "string"
+            ? product.category === category
+            : product.category.name === category));
+
+      const matchesSubCategory = !subCategory || product.type === subCategory;
+      const matchesGender = !gender || product.gender === gender;
+      const matchesSize = !size || product.size === size;
 
       return (
-        matchesCategory &&
-        matchesSubCategory &&
-        matchesGender &&
-        matchesSize &&
-        matchesSearch
+        matchesCategory && matchesSubCategory && matchesGender && matchesSize
       );
     })
     .sort((a, b) => {
@@ -245,7 +262,7 @@ const ProductList = ({ navigation, route }) => {
 
   // Truncate product name if too long
   const truncateName = (text) => {
-    return text.length > 15 ? text.substring(0, 15) + "..." : text;
+    return text.length > 15 ? text.substring(0, 14) + "..." : text;
   };
   // Add empty item if odd number of products
   const displayData = [...filteredProducts];
@@ -337,7 +354,74 @@ const ProductList = ({ navigation, route }) => {
       .length;
   };
 
-  // Ангиллын мэдээллийг харуулах header
+  // Add this new component for active filters
+  const ActiveFilters = () => {
+    const filters = [];
+    if (selectedCategory && selectedCategory !== "Бүгд") {
+      filters.push({ label: `Ангилал: ${selectedCategory}`, key: "category" });
+    }
+    if (selectedSubCategory) {
+      filters.push({
+        label: `Дэд ангилал: ${selectedSubCategory}`,
+        key: "subCategory",
+      });
+    }
+    if (route.params?.gender) {
+      filters.push({ label: `Хүйс: ${route.params.gender}`, key: "gender" });
+    }
+    if (route.params?.size) {
+      filters.push({ label: `Хэмжээ: ${route.params.size}`, key: "size" });
+    }
+
+    if (filters.length === 0) return null;
+
+    return (
+      <View style={styles.activeFiltersContainer}>
+        {filters.map((filter) => (
+          <View key={filter.key} style={styles.filterTag}>
+            <Text style={styles.filterTagText}>{filter.label}</Text>
+            <TouchableOpacity
+              onPress={() => {
+                switch (filter.key) {
+                  case "category":
+                    setSelectedCategory("Бүгд");
+                    setSelectedSubCategory(null);
+                    navigation.setParams({
+                      ...route.params,
+                      category: undefined,
+                      subCategory: undefined,
+                    });
+                    break;
+                  case "subCategory":
+                    setSelectedSubCategory(null);
+                    navigation.setParams({
+                      ...route.params,
+                      subCategory: undefined,
+                    });
+                    break;
+                  case "gender":
+                    navigation.setParams({
+                      ...route.params,
+                      gender: undefined,
+                    });
+                    break;
+                  case "size":
+                    navigation.setParams({ ...route.params, size: undefined });
+                    break;
+                  default:
+                    break;
+                }
+              }}
+            >
+              <Icon name="close" size={16} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        ))}
+      </View>
+    );
+  };
+
+  // Modify the CategoryHeader component
   const CategoryHeader = () => {
     const selectedCat = categories.find((cat) => cat.name === selectedCategory);
     if (!selectedCat) return null;
@@ -404,6 +488,12 @@ const ProductList = ({ navigation, route }) => {
     );
   };
 
+  // Handler to clear category filter
+  const clearCategory = () => {
+    navigation.setParams({ category: null, subCategory: null, reset: true });
+    // Optionally, trigger a reload of all products here
+  };
+
   return (
     <View style={styles.container}>
       {/* Header component */}
@@ -417,11 +507,19 @@ const ProductList = ({ navigation, route }) => {
         onSearchSubmit={handleSearchSubmit}
         isProductList={false}
       />
+      <ImageBackground
+        source={require("../image/banner5.jpg")} // Энд өөрийн background зураг
+        style={styles.backgroundImage}
+        resizeMode="cover"
+      ></ImageBackground>
+
+      {/* Active filters */}
+      <ActiveFilters />
 
       {/* Add SubCategoryList component after the header */}
       <SubCategoryList />
 
-      {/* Search input field */}
+      {/* Search input field - only show when search is toggled */}
       {isSearchVisible && (
         <TextInput
           ref={searchInputRef}
@@ -430,6 +528,8 @@ const ProductList = ({ navigation, route }) => {
           placeholderTextColor="#999"
           value={searchQuery}
           onChangeText={setSearchQuery}
+          autoCapitalize="none"
+          autoCorrect={false}
         />
       )}
 
@@ -446,6 +546,19 @@ const ProductList = ({ navigation, route }) => {
           if (item.empty) {
             return <View style={styles.emptyItem} />;
           }
+
+          // Get the first image URL from the images array
+          const imageUrl =
+            item.images && item.images.length > 0
+              ? item.images[0]
+              : "https://via.placeholder.com/150";
+
+          // Get variant information if available
+          // const variantInfo =
+          //   item.variants && item.variants.length > 0
+          //     ? `(${item.variants.length} variants)`
+          //     : "";
+
           return (
             <View style={styles.itemWrapper}>
               <TouchableOpacity
@@ -455,10 +568,12 @@ const ProductList = ({ navigation, route }) => {
                 }
               >
                 <Image
-                  source={{ uri: item.image.url }}
+                  source={{
+                    uri: imageUrl,
+                  }}
                   style={styles.productImage}
-                  resizeMode="cover"
                 />
+
                 <View style={styles.textContainer}>
                   <Text style={styles.productName}>
                     {truncateName(item.name)}
@@ -466,6 +581,9 @@ const ProductList = ({ navigation, route }) => {
                   <Text style={styles.productPrice}>
                     {item.price.toLocaleString()}₮
                   </Text>
+                  {/* {variantInfo ? (
+                    <Text style={styles.variantInfo}>{variantInfo}</Text>
+                  ) : null} */}
                 </View>
               </TouchableOpacity>
             </View>
@@ -518,7 +636,7 @@ const ProductList = ({ navigation, route }) => {
               <View style={styles.footerItem}>
                 <Icon name="card-outline" size={20} color="#6C63FF" />
                 <Text style={styles.footerText}>
-                  Голомт Банк: 3005154045 ("EZcomerce ХХК"). Гүйлгээний утга:
+                  Хаан банк: 5031608653 ("EZcomerce ХХК"). Гүйлгээний утга:
                   Захиалгын код, утасны дугаар.
                 </Text>
               </View>
@@ -528,7 +646,6 @@ const ProductList = ({ navigation, route }) => {
                   Төлбөр хийгдээгүй захиалга цуцлагдана.
                 </Text>
               </View>
-
               <View style={styles.socialContainer}>
                 <TouchableOpacity
                   onPress={() =>
@@ -638,16 +755,30 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f9f9f9",
   },
-  searchInput: {
-    height: 40,
+  searchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
     margin: 10,
-    borderColor: "#ddd",
-    borderWidth: 1,
-    borderRadius: 20,
-    paddingHorizontal: 15,
     backgroundColor: "#fff",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#ddd",
+  },
+  searchInput: {
+    flex: 1,
+    height: 40,
+    paddingHorizontal: 15,
     fontSize: 14,
     color: "#333",
+  },
+  searchButton: {
+    width: 40,
+    height: 40,
+    backgroundColor: "#6C63FF",
+    borderTopRightRadius: 20,
+    borderBottomRightRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
   },
   center: {
     flex: 1,
@@ -725,6 +856,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "bold",
     color: "#6C63FF",
+  },
+  variantInfo: {
+    fontSize: 12,
+    color: "#666",
+    marginTop: 2,
   },
   footer: {
     padding: 20,
@@ -958,6 +1094,30 @@ const styles = StyleSheet.create({
     backgroundColor: "#f0f0f0",
     alignItems: "center",
     justifyContent: "center",
+  },
+  activeFiltersContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  filterTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#6C63FF",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 15,
+    marginRight: 10,
+    marginBottom: 10,
+  },
+  filterTagText: {
+    color: "#fff",
+    fontSize: 14,
+    marginRight: 5,
   },
 });
 

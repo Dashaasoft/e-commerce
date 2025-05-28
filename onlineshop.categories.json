@@ -1,0 +1,74 @@
+[{
+  "_id": {
+    "$oid": "67f39b5f3bd37a0a57890fef"
+  },
+  "name": "Shoes",
+  "sizes": [
+    "35",
+    "36",
+    "37",
+    "38",
+    "39",
+    "40"
+  ],
+  "types": [
+    "Running",
+    "Sneakers",
+    "Formal"
+  ],
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "67f39b683bd37a0a57890ff1"
+  },
+  "name": "Shirt",
+  "sizes": [
+    "XS",
+    "S",
+    "M",
+    "L",
+    "XL"
+  ],
+  "types": [
+    "Hoodie",
+    "Dress Shirt",
+    "Zippered Shirt"
+  ],
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "67f39b733bd37a0a57890ff3"
+  },
+  "name": "Pants",
+  "sizes": [
+    "S",
+    "M",
+    "L",
+    "XL"
+  ],
+  "types": [
+    "Jeans",
+    "Chinos",
+    "Joggers"
+  ],
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "67f39b793bd37a0a57890ff5"
+  },
+  "name": "Bags",
+  "sizes": [
+    "Small",
+    "Medium",
+    "Large"
+  ],
+  "types": [
+    "Backpack",
+    "Handbag",
+    "Shoulder Bag"
+  ],
+  "__v": 0
+}]

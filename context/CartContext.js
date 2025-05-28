@@ -51,8 +51,6 @@
 //   );
 // };
 
-
-
 // import React, { createContext, useContext, useEffect, useState } from "react";
 // import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -142,11 +140,8 @@
 
 // export const useCart = () => useContext(CartContext);
 
-
-
-
-import React, { createContext, useState, useContext, useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { createContext, useState, useContext, useEffect } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Сагсны контекст үүсгэх
 const CartContext = createContext();
@@ -162,12 +157,15 @@ export const CartProvider = ({ children }) => {
   useEffect(() => {
     const loadCartItems = async () => {
       try {
-        const savedCartItems = await AsyncStorage.getItem('cartItems');
+        const savedCartItems = await AsyncStorage.getItem("cartItems");
         if (savedCartItems) {
           setCartItems(JSON.parse(savedCartItems)); // JSON string-ийг объект болгон хувиргах
         }
       } catch (error) {
-        console.error('AsyncStorage-ээс сагсны бүтээгдэхүүн ачаалахад алдаа гарлаа:', error);
+        console.error(
+          "AsyncStorage-ээс сагсны бүтээгдэхүүн ачаалахад алдаа гарлаа:",
+          error
+        );
       }
     };
 
@@ -178,9 +176,12 @@ export const CartProvider = ({ children }) => {
   useEffect(() => {
     const saveCartItems = async () => {
       try {
-        await AsyncStorage.setItem('cartItems', JSON.stringify(cartItems)); // Объектыг JSON string болгон хадгалах
+        await AsyncStorage.setItem("cartItems", JSON.stringify(cartItems)); // Объектыг JSON string болгон хадгалах
       } catch (error) {
-        console.error('AsyncStorage-д сагсны бүтээгдэхүүн хадгалахад алдаа гарлаа:', error);
+        console.error(
+          "AsyncStorage-д сагсны бүтээгдэхүүн хадгалахад алдаа гарлаа:",
+          error
+        );
       }
     };
 
@@ -188,37 +189,54 @@ export const CartProvider = ({ children }) => {
   }, [cartItems]);
 
   // Сагсанд бүтээгдэхүүн нэмэх функц
-  const addToCart = (product, quantity, size) => {
+  const addToCart = (product, quantity, size, color) => {
     setCartItems((prevItems) => {
-      // Ижил ID болон хэмжээтэй бүтээгдэхүүн байгаа эсэхийг шалгах
       const existingItem = prevItems.find(
-        (item) => item._id === product._id && item.size === size
+        (item) => item._id === product._id && item.size === size && item.color === color
       );
+
       if (existingItem) {
-        // Байгаа бол тоо ширхэгийг нэмэгдүүлэх
         return prevItems.map((item) =>
-          item._id === product._id && item.size === size
+          item._id === product._id && item.size === size && item.color === color
             ? { ...item, quantity: item.quantity + quantity }
             : item
         );
       }
-      // Байхгүй бол шинэ бүтээгдэхүүн болгон нэмэх
-      return [...prevItems, { ...product, quantity, size }];
+
+      // 👇 image.url хөрвүүлж өгөх
+      const newItem = {
+        ...product,
+        quantity,
+        size,
+        color,
+        image: {
+          url:
+            product.image?.url || // хэрвээ байгаа бол
+            product.images?.[0] || // олон зурагтай бол эхнийх
+            "https://via.placeholder.com/150", // fallback зураг
+        },
+      };
+
+      return [...prevItems, newItem];
     });
   };
 
   // Сагснаас бүтээгдэхүүн хасах функц
-  const removeFromCart = (productId, size) => {
+  const removeFromCart = (productId, size, color) => {
     setCartItems((prevItems) =>
-      prevItems.filter((item) => !(item._id === productId && item.size === size))
+      prevItems.filter(
+        (item) => !(item._id === productId && item.size === size && item.color === color)
+      )
     );
   };
 
   // Бүтээгдэхүүний тоо ширхэгийг өөрчлөх функц
-  const updateQuantity = (productId, size, quantity) => {
+  const updateQuantity = (productId, size, color, quantity) => {
     setCartItems((prevItems) =>
       prevItems.map((item) =>
-        item._id === productId && item.size === size ? { ...item, quantity } : item
+        item._id === productId && item.size === size && item.color === color
+          ? { ...item, quantity }
+          : item
       )
     );
   };
@@ -234,13 +252,20 @@ export const CartProvider = ({ children }) => {
   // Сагсыг цэвэрлэх функц
   const clearCart = () => {
     setCartItems([]);
-    AsyncStorage.removeItem('cartItems');
+    AsyncStorage.removeItem("cartItems");
   };
 
   // Сагсны контекстийг бусад компонентуудад нийлүүлэх
   return (
     <CartContext.Provider
-      value={{ cartItems, addToCart, removeFromCart, updateQuantity, calculateTotal, clearCart }}
+      value={{
+        cartItems,
+        addToCart,
+        removeFromCart,
+        updateQuantity,
+        calculateTotal,
+        clearCart,
+      }}
     >
       {children}
     </CartContext.Provider>

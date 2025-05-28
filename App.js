@@ -35,7 +35,10 @@ export default function App() {
             />
 
             {/* Main App Flow */}
-            <Stack.Screen name="MainContainer" component={BottomTabsNavigator} />
+            <Stack.Screen
+              name="MainContainer"
+              component={BottomTabsNavigator}
+            />
 
             <Stack.Screen name="Home" component={BottomTabsNavigator} />
             <Stack.Screen name="ProductList" component={ProductList} />
@@ -49,7 +52,6 @@ export default function App() {
             <Stack.Screen name="ShoppingCartTab" component={ShoppingCart} />
             <Stack.Screen name="Sales" component={SaleScreen} />
             <Stack.Screen name="CheckoutScreen" component={CheckoutScreen} />
-
           </Stack.Navigator>
         </NavigationContainer>
       </CartProvider>

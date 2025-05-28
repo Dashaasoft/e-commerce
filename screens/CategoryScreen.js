@@ -7,10 +7,34 @@ import {
   ScrollView,
   Modal,
   Dimensions,
+  Platform, // Platform-specific styles for shadow
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import Header from "./Header";
+import Header from "./Header"; // Assuming Header component exists
 import { MaterialIcons } from "@expo/vector-icons";
+
+// Define colors for easier management and consistency
+const COLORS = {
+  primary: "#6C63FF", // Main interactive color
+  primaryLight: "#E9E7FF", // Lighter shade for backgrounds/accents
+  white: "#FFFFFF",
+  black: "#1A1A1A", // Darker text for better contrast
+  greyLight: "#F7F7F7", // Light background grey
+  greyMedium: "#E0E0E0", // Medium grey for borders/inactive elements
+  greyDark: "#888888", // Darker grey for secondary text
+  danger: "#FF6B6B", // Optional for reset/cancel actions
+};
+
+// Define font styles for consistency
+const FONTS = {
+  h1: { fontSize: 26, fontWeight: "bold", color: COLORS.black },
+  h2: { fontSize: 20, fontWeight: "600", color: COLORS.black },
+  h3: { fontSize: 16, fontWeight: "600", color: COLORS.black },
+  body: { fontSize: 16, color: COLORS.black },
+  bodySecondary: { fontSize: 14, color: COLORS.greyDark },
+  chip: { fontSize: 14, fontWeight: "500" },
+  button: { fontSize: 16, fontWeight: "bold" },
+};
 
 const CategoryScreen = () => {
   const navigation = useNavigation();
@@ -23,81 +47,50 @@ const CategoryScreen = () => {
   const screenWidth = Dimensions.get("window").width;
 
   useEffect(() => {
-    fetch("http://192.168.36.181:5000/api/products")
-      .then((res) => res.json())
+    fetch("http://10.150.35.107:5000/api/categories") // Use your actual IP/URL
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        return res.json();
+      })
       .then((data) => {
-        const categoryMap = new Map();
-        data.forEach((p) => {
-          if (!categoryMap.has(p.category)) {
-            categoryMap.set(p.category, {
-              subCategories: new Set(),
-              genders: new Set(),
-              sizes: new Set(),
-              isShoeCategory:
-                p.category.toLowerCase().includes("shoes") ||
-                p.category.toLowerCase().includes("гутал"),
-              isClothingCategory:
-                p.category.toLowerCase().includes("clothing") ||
-                p.category.toLowerCase().includes("хувцас") ||
-                p.category.toLowerCase().includes("хувцасны") ||
-                p.category.toLowerCase().includes("хувцасны бүтээгдэхүүн"),
-            });
-          }
-
-          const category = categoryMap.get(p.category);
-
-          if (p.subCategory) {
-            category.subCategories.add(p.subCategory);
-          }
-          
-          // Add gender options for both shoes and clothing categories
-          if (category.isShoeCategory || category.isClothingCategory) {
-            if (category.isShoeCategory) {
-              if (p.gender) {
-                category.genders.add(p.gender);
-              }
-            } else {
-              // For clothing categories, always add all gender options
-              category.genders.add("Men");
-              category.genders.add("Women");
-              category.genders.add("Unisex");
-            }
-          }
-
-          // Хэмжээг ангилалаас хамааруулж авах
-          const sizes = category.isShoeCategory
-            ? Object.keys(p.sizeQuantity?.shoeSizes || {})
-            : Object.keys(p.sizeQuantity?.clothingSizes || {});
-
-          sizes.forEach((s) => category.sizes.add(s));
-        });
-
-        const formatted = Array.from(categoryMap).map(([name, filters], i) => ({
-          id: i + 1,
-          name,
-          subCategories: Array.from(filters.subCategories),
-          genders: Array.from(filters.genders),
-          sizes: Array.from(filters.sizes).sort((a, b) => {
-            // Тоон хэмжээг эрэмбэлэх
-            if (filters.isShoeCategory) {
-              return parseInt(a) - parseInt(b);
-            }
-            // Үсгэн хэмжээг эрэмбэлэх (XS, S, M, L, XL, XXL)
+        const formatted = data.map((item) => ({
+          id: item._id,
+          name: item.name,
+          subCategories: item.types || [],
+          genders: ["Men", "Women", "Unisex"], // Default genders
+          sizes: (item.sizes || []).sort((a, b) => {
+            const isANumber = !isNaN(Number(a));
+            const isBNumber = !isNaN(Number(b));
+            // Sort numbers numerically first
+            if (isANumber && isBNumber) return Number(a) - Number(b);
+            if (isANumber) return -1; // Numbers before strings
+            if (isBNumber) return 1; // Strings after numbers
+            // Then sort standard sizes
             const sizeOrder = { XS: 1, S: 2, M: 3, L: 4, XL: 5, XXL: 6 };
-            return (sizeOrder[a] || 0) - (sizeOrder[b] || 0);
+            return (
+              (sizeOrder[a.toUpperCase()] || 99) -
+              (sizeOrder[b.toUpperCase()] || 99)
+            );
           }),
-          isShoeCategory: filters.isShoeCategory,
-          isClothingCategory: filters.isClothingCategory,
+          isShoeCategory: item.name.toLowerCase().includes("shoes"),
+          isClothingCategory: !item.name.toLowerCase().includes("shoes"), // Simplified logic
         }));
-
         setCategoryData(formatted);
+      })
+      .catch((error) => {
+        console.error("Ангилал татахад алдаа гарлаа:", error);
+        // Optionally show an error message to the user
       });
   }, []);
 
+  // Reusable Filter Chip Component
   const FilterChip = ({ label, selected, onPress }) => (
     <TouchableOpacity
       style={[styles.chip, selected && styles.chipSelected]}
       onPress={onPress}
+      activeOpacity={0.7}
     >
       <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
         {label}
@@ -112,59 +105,99 @@ const CategoryScreen = () => {
 
   const closeModal = () => {
     setModalVisible(false);
+  };
+
+  const resetFiltersAndClose = () => {
     setSelectedSubCategory(null);
     setSelectedGender(null);
     setSelectedSize(null);
+    setModalVisible(false); // Close after resetting
   };
 
   const applyFilters = () => {
-    // Create a parameters object with only the non-null values
+    if (!selectedCategory) return; // Safety check
+
     const params = {
-      category: selectedCategory?.name,
+      category: selectedCategory.name,
+      ...(selectedSubCategory && { subCategory: selectedSubCategory }),
+      ...(selectedGender && { gender: selectedGender }),
+      ...(selectedSize && { size: selectedSize }),
+      reset: false, // Not a full reset, just filtered
     };
 
-    // Only add parameters that have been selected
-    if (selectedSubCategory) {
-      params.subCategory = selectedSubCategory;
-    }
-
-    if (selectedGender) {
-      params.gender = selectedGender;
-    }
-
-    if (selectedSize) {
-      params.size = selectedSize;
-    }
-
-    // Pass all the filter parameters to ProductList
     navigation.navigate("ProductList", params);
-    closeModal();
+    closeModal(); // Close modal after navigating
+  };
+
+  const showAllProducts = () => {
+    setSelectedCategory(null);
+    setSelectedSubCategory(null);
+    setSelectedGender(null);
+    setSelectedSize(null);
+    setModalVisible(false);
+    navigation.navigate("ProductList", { reset: true });
   };
 
   const genderShortcuts = [
-    { label: "🛍 Бүх бүтээгдэхүүн", gender: null },
-    { label: "👨 Эрэгтэй", gender: "Men" },
-    { label: "👩 Эмэгтэй", gender: "Women" },
+    { label: "🛍️ Бүгд", gender: null },
+    { label: "👨 Эрэгтэй", gender: "Эрэгтэй" },
+    { label: "👩 Эмэгтэй", gender: "Эмэгтэй" },
     { label: "✨ Unisex", gender: "Unisex" },
   ];
+
+  // Helper to render filter sections in the modal
+  const renderFilterSection = (
+    title,
+    items,
+    selectedValue,
+    setter,
+    labelExtractor = (item) => item
+  ) => {
+    if (!items || items.length === 0) return null;
+
+    return (
+      <View style={styles.filterSection}>
+        <Text style={styles.filterTitle}>{title}</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipScrollContainer}
+        >
+          {items.map((item, idx) => {
+            const label = labelExtractor(item);
+            const value = item; // Assuming the item itself is the value (like 'Men', 'S', 'T-Shirt')
+            return (
+              <FilterChip
+                key={`${title}-${idx}`} // More specific key
+                label={label}
+                selected={selectedValue === value}
+                onPress={() => setter(selectedValue === value ? null : value)}
+              />
+            );
+          })}
+        </ScrollView>
+      </View>
+    );
+  };
 
   return (
     <View style={styles.container}>
       <Header
         navigation={navigation}
         showBackButton={false}
-        showFilterButton={false} // Фильтр товчийг нууна
+        showFilterButton={false}
         showBanner={false}
-        showSearchButton={false} // This hides the search button
+        showSearchButton={false}
         showCategoryButton={false}
       />
       <Text style={styles.title}>Ангилал</Text>
 
+      {/* Gender Shortcuts */}
       <View style={styles.shortcutsContainer}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.genderScrollContent}
+          contentContainerStyle={styles.shortcutsScrollContent}
         >
           {genderShortcuts.map((item, index) => (
             <TouchableOpacity
@@ -173,9 +206,10 @@ const CategoryScreen = () => {
               onPress={() =>
                 navigation.navigate("ProductList", {
                   gender: item.gender,
-                  reset: true,
+                  reset: true, // Reset filters when using shortcut
                 })
               }
+              activeOpacity={0.7}
             >
               <Text style={styles.shortcutText}>{item.label}</Text>
             </TouchableOpacity>
@@ -183,110 +217,108 @@ const CategoryScreen = () => {
         </ScrollView>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
+      {/* Category List */}
+      <ScrollView contentContainerStyle={styles.listScrollContainer}>
+        {categoryData.length === 0 && (
+          <Text style={styles.loadingText}>Ачааллаж байна...</Text> // Loading indicator
+        )}
         {categoryData.map((cat) => (
           <TouchableOpacity
             key={cat.id}
             style={styles.categoryItem}
             onPress={() => openModal(cat)}
+            activeOpacity={0.6}
           >
             <Text style={styles.categoryText}>{cat.name}</Text>
-            <MaterialIcons name="chevron-right" size={24} color="#6C63FF" />
+            <MaterialIcons
+              name="chevron-right"
+              size={24}
+              color={COLORS.primary}
+            />
           </TouchableOpacity>
         ))}
       </ScrollView>
 
+      {/* Filter Modal */}
       <Modal
         animationType="slide"
         transparent={true}
         visible={modalVisible}
-        onRequestClose={closeModal}
+        onRequestClose={showAllProducts} // Show all products on Android back
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <Text style={styles.subtitle}>{selectedCategory?.name}</Text>
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={showAllProducts} // Close modal and show all products when tapping outside
+        >
+          <View
+            style={styles.modalContent}
+            onStartShouldSetResponder={() => true}
+          >
+            {/* X (close) button in the top right */}
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={showAllProducts}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons name="close" size={26} color="#888" />
+            </TouchableOpacity>
 
-            {selectedCategory?.subCategories.length > 0 && (
-              <>
-                <Text style={styles.filterTitle}>Дэд ангилал</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {selectedCategory.subCategories.map((sub, idx) => (
-                    <FilterChip
-                      key={idx}
-                      label={sub}
-                      selected={selectedSubCategory === sub}
-                      onPress={() =>
-                        setSelectedSubCategory(
-                          sub === selectedSubCategory ? null : sub
-                        )
-                      }
-                    />
-                  ))}
-                </ScrollView>
-              </>
+            <Text style={styles.modalTitle}>
+              {selectedCategory?.name || "Шүүлтүүр"}
+            </Text>
+
+            {renderFilterSection(
+              "Дэд ангилал",
+              selectedCategory?.subCategories,
+              selectedSubCategory,
+              setSelectedSubCategory
             )}
 
-            {selectedCategory?.genders.length > 0 && (selectedCategory.isShoeCategory || selectedCategory.isClothingCategory) && (
-              <>
-                <Text style={styles.filterTitle}>Хүйс</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {selectedCategory.genders.map((g, idx) => (
-                    <FilterChip
-                      key={idx}
-                      label={
-                        g === "Men"
-                          ? "Эрэгтэй"
-                          : g === "Women"
-                          ? "Эмэгтэй"
-                          : "Unisex"
-                      }
-                      selected={selectedGender === g}
-                      onPress={() =>
-                        setSelectedGender(g === selectedGender ? null : g)
-                      }
-                    />
-                  ))}
-                </ScrollView>
-              </>
+            {selectedCategory?.genders &&
+              (selectedCategory.isShoeCategory ||
+                selectedCategory.isClothingCategory) &&
+              renderFilterSection(
+                "Хүйс",
+                selectedCategory.genders,
+                selectedGender,
+                setSelectedGender,
+                (g) =>
+                  g === "Men" ? "Эрэгтэй" : g === "Women" ? "Эмэгтэй" : "Unisex" // Label extractor for gender
+              )}
+
+            {renderFilterSection(
+              selectedCategory?.isShoeCategory
+                ? "Гутлын хэмжээ"
+                : "Хувцасны хэмжээ",
+              selectedCategory?.sizes,
+              selectedSize,
+              setSelectedSize
             )}
 
-            {selectedCategory?.sizes.length > 0 && (
-              <>
-                <Text style={styles.filterTitle}>
-                  {selectedCategory.isShoeCategory
-                    ? "Гутлын хэмжээ"
-                    : "Хувцасны хэмжээ"}
-                </Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View style={styles.sizesContainer}>
-                    {selectedCategory.sizes.map((s, idx) => (
-                      <FilterChip
-                        key={idx}
-                        label={s}
-                        selected={selectedSize === s}
-                        onPress={() =>
-                          setSelectedSize(s === selectedSize ? null : s)
-                        }
-                      />
-                    ))}
-                  </View>
-                </ScrollView>
-              </>
-            )}
-
+            {/* Action Buttons */}
             <View style={styles.buttonsRow}>
-              <TouchableOpacity style={styles.resetButton} onPress={closeModal}>
-                <Text style={styles.resetButtonText}>Болих</Text>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.resetButton]}
+                onPress={showAllProducts}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.modalButtonText, styles.resetButtonText]}>
+                  Цэвэрлэх
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.viewButton}
+                style={[styles.modalButton, styles.applyButton]}
                 onPress={applyFilters}
+                activeOpacity={0.7}
               >
-                <Text style={styles.viewButtonText}>Үзэх</Text>
+                <Text style={[styles.modalButtonText, styles.applyButtonText]}>
+                  Үзэх
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
     </View>
   );
@@ -295,132 +327,166 @@ const CategoryScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
-  },
-  scrollContainer: {
-    padding: 20,
+    backgroundColor: COLORS.white, // Use white background
   },
   title: {
-    fontSize: 26,
-    fontWeight: "bold",
-    marginTop: 10,
-    marginLeft: 20,
-    marginBottom: 10,
+    ...FONTS.h1, // Use defined font style
+    marginHorizontal: 20,
+    marginTop: 15,
+    marginBottom: 15,
   },
+  // --- Shortcuts ---
   shortcutsContainer: {
-    marginBottom: 10,
+    marginBottom: 5, // Reduced margin slightly
   },
-  genderScrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 10,
+  shortcutsScrollContent: {
+    paddingHorizontal: 15, // Adjust padding
+    paddingVertical: 10,
   },
   shortcut: {
-    backgroundColor: "#eee",
-    paddingHorizontal: 18,
+    backgroundColor: COLORS.primaryLight, // Use light primary color
+    paddingHorizontal: 20,
     paddingVertical: 10,
-    borderRadius: 24,
+    borderRadius: 20, // Softer corners
     marginRight: 12,
-    minWidth: 130,
+    minWidth: 100, // Adjust as needed
     alignItems: "center",
     justifyContent: "center",
   },
   shortcutText: {
-    color: "#333",
+    ...FONTS.chip, // Use chip font style
+    color: COLORS.primary, // Use primary color for text
     fontWeight: "600",
-    fontSize: 14,
+  },
+  // --- Category List ---
+  listScrollContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 20, // Add padding at the bottom
+  },
+  loadingText: {
+    ...FONTS.bodySecondary,
     textAlign: "center",
+    marginTop: 30,
   },
   categoryItem: {
-    padding: 15,
-    backgroundColor: "#f2f2f2",
-    borderRadius: 10,
-    marginBottom: 10,
+    backgroundColor: COLORS.greyLight, // Lighter grey background
+    paddingVertical: 18,
+    paddingHorizontal: 15,
+    borderRadius: 12, // Slightly larger radius
+    marginBottom: 12,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    // Shadow for depth (Platform specific)
+    ...Platform.select({
+      ios: {
+        shadowColor: COLORS.black,
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.08,
+        shadowRadius: 3,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
   categoryText: {
-    fontSize: 16,
-    color: "#333",
+    ...FONTS.body, // Use body font style
+    fontWeight: "500", // Slightly bolder
   },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: "#eee",
-    marginRight: 10,
-    marginBottom: 8,
-    minWidth: 45,
-    alignItems: "center",
-  },
-  chipSelected: {
-    backgroundColor: "#6C63FF",
-  },
-  chipText: {
-    color: "#333",
-  },
-  chipTextSelected: {
-    color: "#fff",
-  },
-  subtitle: {
-    fontSize: 20,
-    fontWeight: "600",
-    marginBottom: 10,
-  },
-  filterTitle: {
-    fontSize: 16,
-    fontWeight: "500",
-    marginTop: 15,
-    marginBottom: 8,
-  },
-  modalContainer: {
+  // --- Modal ---
+  modalOverlay: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.3)",
+    backgroundColor: "rgba(0,0,0,0.4)", // Slightly darker overlay
   },
   modalContent: {
-    backgroundColor: "#fff",
-    padding: 20,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    backgroundColor: COLORS.white,
+    paddingHorizontal: 20,
+    paddingTop: 25,
+    paddingBottom: 30, // More space at the bottom for buttons
+    borderTopLeftRadius: 25, // Larger radius for modern feel
+    borderTopRightRadius: 25,
+    maxHeight: "75%", // Limit modal height
   },
+  modalTitle: {
+    ...FONTS.h2, // Use h2 style
+    marginBottom: 20,
+    textAlign: "center", // Center title
+  },
+  filterSection: {
+    marginBottom: 15, // Space between filter sections
+  },
+  filterTitle: {
+    ...FONTS.h3, // Use h3 style
+    marginBottom: 12,
+  },
+  chipScrollContainer: {
+    paddingBottom: 5, // Ensure chips don't get cut off
+  },
+  // --- Filter Chips ---
+  chip: {
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 18,
+    backgroundColor: COLORS.greyLight,
+    marginRight: 10,
+    marginBottom: 10, // Added margin bottom for wrapping case
+    borderWidth: 1,
+    borderColor: COLORS.greyMedium, // Subtle border
+  },
+  chipSelected: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  chipText: {
+    ...FONTS.chip, // Use chip font style
+    color: COLORS.black,
+  },
+  chipTextSelected: {
+    color: COLORS.white,
+    fontWeight: "600", // Bolder selected text
+  },
+  // --- Modal Buttons ---
   buttonsRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 25,
+    marginTop: 30, // Increased space before buttons
+    paddingHorizontal: 5, // Add slight horizontal padding if needed
   },
-  viewButton: {
-    backgroundColor: "#6C63FF",
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 10,
+  modalButton: {
+    flex: 1, // Make buttons take equal width
+    paddingVertical: 15,
+    borderRadius: 12, // Consistent radius
     alignItems: "center",
-    flex: 1,
-    marginLeft: 10,
+    justifyContent: "center",
   },
   resetButton: {
-    backgroundColor: "#eee",
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-    alignItems: "center",
-    flex: 1,
-    marginRight: 10,
+    backgroundColor: COLORS.greyLight,
+    marginRight: 10, // Space between buttons
+    borderWidth: 1,
+    borderColor: COLORS.greyMedium,
   },
-  viewButtonText: {
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 16,
+  applyButton: {
+    backgroundColor: COLORS.primary,
+    marginLeft: 10, // Space between buttons
+  },
+  modalButtonText: {
+    ...FONTS.button, // Use button font style
   },
   resetButtonText: {
-    color: "#333",
+    color: COLORS.black, // Dark text for reset
     fontWeight: "600",
-    fontSize: 16,
   },
-  sizesContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    paddingRight: 10,
+  applyButtonText: {
+    color: COLORS.white, // White text for apply
+  },
+  closeButton: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    zIndex: 10,
+    padding: 6,
   },
 });
 

@@ -15,30 +15,30 @@ import Header from "./Header";
 import { Ionicons } from "@expo/vector-icons";
 import { UserContext } from "../context/UserContext";
 
-
-
 const ShoppingCart = ({ navigation }) => {
   const { cartItems, removeFromCart, updateQuantity, calculateTotal } =
     useCart();
   const { user } = useContext(UserContext);
 
   // Тоо ширхэг нэмэх функц
-  const increaseQuantity = (productId, size) => {
+  const increaseQuantity = (productId, size, color) => {
     const item = cartItems.find(
-      (item) => item._id === productId && item.size === size
+      (item) =>
+        item._id === productId && item.size === size && item.color === color
     );
     if (item) {
-      updateQuantity(productId, size, item.quantity + 1);
+      updateQuantity(productId, size, color, item.quantity + 1);
     }
   };
 
   // Тоо ширхэг багасгах функц
-  const decreaseQuantity = (productId, size) => {
+  const decreaseQuantity = (productId, size, color) => {
     const item = cartItems.find(
-      (item) => item._id === productId && item.size === size
+      (item) =>
+        item._id === productId && item.size === size && item.color === color
     );
     if (item && item.quantity > 1) {
-      updateQuantity(productId, size, item.quantity - 1);
+      updateQuantity(productId, size, color, item.quantity - 1);
     }
   };
 
@@ -54,16 +54,41 @@ const ShoppingCart = ({ navigation }) => {
         "Төлбөр төлөхийн тулд та эхлээд системд нэвтрэх шаардлагатай.",
         [
           { text: "Цуцлах", style: "cancel" },
-          { 
-            text: "Нэвтрэх", 
+          {
+            text: "Нэвтрэх",
             onPress: () => {
               // Доод навигацийн "ProfileTab" индексийг шууд сонгох
               navigation.navigate("MainContainer", { screen: "ProfileTab" });
-
-            }
-          }
+            },
+          },
         ]
       );
+    }
+  };
+
+  // Өнгөний кодыг авах функц
+  const getColorCode = (colorName) => {
+    switch (colorName) {
+      case "Хар":
+        return "#1A1A1A";
+      case "Цэнхэр":
+        return "#0066CC";
+      case "Саарал":
+        return "#666666";
+      case "Цагаан":
+        return "#F5F5F5";
+      case "Улаан":
+        return "#E60000";
+      case "Ногоон":
+        return "#009933";
+      case "Шар":
+        return "#FFD700";
+      case "Ягаан":
+        return "#FF69B4";
+      case "Хүрэн":
+        return "#8B4513";
+      default:
+        return "#CCCCCC";
     }
   };
 
@@ -88,39 +113,73 @@ const ShoppingCart = ({ navigation }) => {
           <>
             <FlatList
               data={cartItems}
-              keyExtractor={(item) => `${item._id}-${item.size}`} // Өвөрмөц түлхүүр үүсгэх
+              keyExtractor={(item) =>
+                `${item._id}-${item.size}-${item.color || "no-color"}`
+              }
               renderItem={({ item }) => (
                 <View style={styles.itemContainer}>
                   <Image
-                    source={{ uri: item.image.url }}
+                    source={{
+                      uri:
+                        item.image?.url ||
+                        item.images?.[0] ||
+                        "https://via.placeholder.com/150",
+                    }}
                     style={styles.productImage}
                   />
+
                   <View style={styles.itemDetails}>
                     <Text style={styles.productName}>{item.name}</Text>
-                    <Text style={styles.productPrice}>
-                      {item.price.toLocaleString()}₮
-                    </Text>
-                    <Text>Хэмжээ: {item.size}</Text>
+                    <View style={styles.variantContainer}>
+                      <Text style={styles.variantText}>
+                        Хэмжээ: {item.size}
+                      </Text>
+                      {item.color && (
+                        <View style={styles.colorContainer}>
+                          <Text style={styles.variantText}>Өнгө: </Text>
+                          <View
+                            style={[
+                              styles.colorIndicator,
+                              { backgroundColor: getColorCode(item.color) },
+                            ]}
+                          />
+                          <Text style={styles.variantText}>{item.color}</Text>
+                        </View>
+                      )}
+                    </View>
                     <View style={styles.quantityContainer}>
                       <TouchableOpacity
-                        onPress={() => decreaseQuantity(item._id, item.size)}
+                        onPress={() =>
+                          decreaseQuantity(item._id, item.size, item.color)
+                        }
                         style={styles.quantityButton}
                       >
                         <Text style={styles.quantityButtonText}>-</Text>
                       </TouchableOpacity>
                       <Text style={styles.quantityText}>{item.quantity}</Text>
                       <TouchableOpacity
-                        onPress={() => increaseQuantity(item._id, item.size)}
+                        onPress={() =>
+                          increaseQuantity(item._id, item.size, item.color)
+                        }
                         style={styles.quantityButton}
                       >
                         <Text style={styles.quantityButtonText}>+</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
+
+                  <View style={styles.priceContainer}>
+                    <Text style={styles.productPrice}>
+                      {item.price.toLocaleString()}₮
+                    </Text>
+                  </View>
+
                   {/* Устгах товчийг баруун талд байрлуулах */}
                   <TouchableOpacity
                     style={styles.removeButtonContainer}
-                    onPress={() => removeFromCart(item._id, item.size)}
+                    onPress={() =>
+                      removeFromCart(item._id, item.size, item.color)
+                    }
                   >
                     <Icon name="trash-outline" size={24} color="red" />
                   </TouchableOpacity>
@@ -179,10 +238,11 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 2,
     alignItems: "center", // Бүтээгдэхүүний мэдээллийг босоо төвд байрлуулах
+    position: "relative", // Relative position for absolute positioning of price
   },
   productImage: {
     width: 80,
-    height: 80,
+    height: 100,
     borderRadius: 10,
     marginRight: 10,
   },
@@ -194,9 +254,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "bold",
   },
+  priceContainer: {
+    position: "absolute",
+    bottom: 10,
+    right: 40, // Устгах товчны зүүн талд байрлуулах
+  },
   productPrice: {
     fontSize: 14,
     color: "green",
+    fontWeight: "bold",
   },
   quantityContainer: {
     flexDirection: "row",
@@ -263,6 +329,26 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
     paddingHorizontal: 5,
     borderRadius: 20,
+  },
+  variantContainer: {
+    marginVertical: 5,
+  },
+  variantText: {
+    fontSize: 14,
+    color: "#555",
+  },
+  colorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 2,
+  },
+  colorIndicator: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    marginHorizontal: 5,
+    borderWidth: 1,
+    borderColor: "#ddd",
   },
 });
 

@@ -23,7 +23,7 @@ const CategoryScreen = () => {
   const screenWidth = Dimensions.get("window").width;
 
   useEffect(() => {
-    fetch("http://10.150.42.89:5000/api/products")
+    fetch("http://10.150.35.55:5000/api/products")
       .then((res) => res.json())
       .then((data) => {
         const categoryMap = new Map();

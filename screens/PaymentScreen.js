@@ -51,6 +51,22 @@ const PaymentScreen = ({ navigation, route }) => {
     setSelectedOption(option);
   };
 
+  // Get payment method icon based on the payment method
+  const getPaymentMethodIcon = (method) => {
+    switch (method) {
+      case "QPay":
+        return require("../assets/qpay.jpeg");
+      case "HiPay":
+        return require("../assets/hipay.png");
+      case "Зээлээр авах":
+        return require("../assets/zeel.png");
+      case "Дансаар шилжүүлэх":
+        return require("../assets/bank.png");
+      default:
+        return null;
+    }
+  };
+
   const handlePayment = async () => {
     if (!selectedOption) {
       Alert.alert("Анхаар", "Төлбөрийн сонголтоо сонгоно уу!");
@@ -63,17 +79,31 @@ const PaymentScreen = ({ navigation, route }) => {
       // Захиалгын мэдээллийг бэлтгэх
       const finalOrderData = {
         ...orderData,
-        orderNumber: `ORD${Date.now()}${Math.floor(Math.random() * 1000)}`,
         paymentMethod: selectedOption.name,
-        status: "pending",
-        createdAt: new Date().toISOString(),
+        paymentStatus: "pending",
+        orderStatus: "pending",
       };
 
+      // Ensure payment method is included
+      if (!finalOrderData.paymentMethod) {
+        finalOrderData.paymentMethod = selectedOption.name;
+      }
+
+      // Double-check payment method
+      console.log("Selected payment option:", selectedOption);
+      console.log("Selected payment method name:", selectedOption.name);
+      finalOrderData.paymentMethod = selectedOption.name;
+
       console.log("Sending order data:", finalOrderData); // Debug log
+      console.log("Payment method selected:", selectedOption.name); // Additional log for payment method
+      console.log(
+        "Final payment method in order data:",
+        finalOrderData.paymentMethod
+      ); // Additional log for payment method
 
       // Захиалгын мэдээллийг өгөгдлийн санд хадгалах
       const response = await axios.post(
-        "http://192.168.36.181:5000/api/orders",
+        "http://10.150.35.107:5000/api/orders",
         finalOrderData,
         {
           headers: {
@@ -84,6 +114,14 @@ const PaymentScreen = ({ navigation, route }) => {
       );
 
       console.log("Order creation response:", response.data); // Debug log
+      console.log(
+        "Payment method in response:",
+        response.data.data?.paymentMethod
+      ); // Check if payment method is in response
+      console.log(
+        "Full response data:",
+        JSON.stringify(response.data, null, 2)
+      ); // Log full response data
 
       if (response.data.success) {
         // Сагсыг цэвэрлэх
@@ -98,7 +136,7 @@ const PaymentScreen = ({ navigation, route }) => {
               await Linking.openURL(url);
               Alert.alert(
                 "Амжилттай",
-                `Таны захиалга амжилттай хийгдлээ. Захиалгын дугаар: ${finalOrderData.orderNumber}`,
+                `Таны захиалга амжилттай хийгдлээ. Захиалгын дугаар: ${response.data.data._id}`,
                 [
                   {
                     text: "OK",
@@ -123,7 +161,7 @@ const PaymentScreen = ({ navigation, route }) => {
         } else {
           Alert.alert(
             "Амжилттай",
-            `Таны захиалга амжилттай хийгдлээ. Захиалгын дугаар: ${finalOrderData.orderNumber}`,
+            `Таны захиалга амжилттай хийгдлээ. Захиалгын дугаар: ${response.data.data._id}`,
             [
               {
                 text: "OK",
@@ -178,6 +216,28 @@ const PaymentScreen = ({ navigation, route }) => {
           </View>
         </TouchableOpacity>
       ))}
+
+      {selectedOption && (
+        <View style={styles.selectedPaymentContainer}>
+          <Text style={styles.selectedPaymentTitle}>
+            Сонгосон төлбөрийн арга:
+          </Text>
+          <View style={styles.selectedPaymentDetails}>
+            <Image
+              source={getPaymentMethodIcon(selectedOption.name)}
+              style={styles.selectedPaymentIcon}
+            />
+            <View style={styles.selectedPaymentTextContainer}>
+              <Text style={styles.selectedPaymentName}>
+                {selectedOption.name}
+              </Text>
+              <Text style={styles.selectedPaymentDescription}>
+                {selectedOption.description}
+              </Text>
+            </View>
+          </View>
+        </View>
+      )}
 
       <TouchableOpacity
         style={[
@@ -241,7 +301,7 @@ const styles = StyleSheet.create({
     padding: 15,
     borderRadius: 10,
     alignItems: "center",
-    marginTop: 20,
+    marginTop: 0,
   },
   disabledButton: {
     backgroundColor: "#ccc",
@@ -250,6 +310,44 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 18,
     fontWeight: "bold",
+  },
+  selectedPaymentContainer: {
+    marginTop: 20,
+    marginBottom: 20,
+    padding: 15,
+    backgroundColor: "#f0f8ff",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#b0e0e6",
+  },
+  selectedPaymentTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 10,
+    color: "#4169e1",
+  },
+  selectedPaymentDetails: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  selectedPaymentIcon: {
+    width: 40,
+    height: 40,
+    marginRight: 10,
+    borderRadius: 5,
+  },
+  selectedPaymentTextContainer: {
+    flex: 1,
+  },
+  selectedPaymentName: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#333",
+  },
+  selectedPaymentDescription: {
+    fontSize: 14,
+    color: "#666",
+    marginTop: 5,
   },
 });
 

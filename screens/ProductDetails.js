@@ -21,6 +21,7 @@ import Header from "./Header";
 const ProductDetails = ({ route, navigation }) => {
   const { product } = route.params;
   const [selectedSize, setSelectedSize] = useState(null);
+  const [selectedColor, setSelectedColor] = useState(null);
   const [quantity, setQuantity] = useState(1);
   const [relatedProducts, setRelatedProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -33,10 +34,42 @@ const ProductDetails = ({ route, navigation }) => {
     Dimensions.get("window")
   );
 
-  // Create an array with both images for easier handling
-  const productImages = [product.image?.url, product.hoverImage?.url].filter(
-    Boolean
-  );
+  // Create an array with product images
+  const productImages = product.images || [];
+
+  // Get unique colors from variants with their display names and enhanced colors
+  const uniqueColors = [
+    ...new Set(product.variants?.map((v) => v.color) || []),
+  ].map((color) => ({
+    value: color,
+    display: color,
+    // Enhanced color mapping with more vibrant colors
+    color:
+      color === "Хар"
+        ? "#1A1A1A"
+        : color === "Цэнхэр"
+        ? "#0066CC"
+        : color === "Саарал"
+        ? "#666666"
+        : color === "Цагаан"
+        ? "#F5F5F5"
+        : color === "Улаан" ||
+          color === "улаан" ||
+          color === "Red" ||
+          color === "red"
+        ? "#E60000"
+        : color === "Ногоон"
+        ? "#009933"
+        : color === "Шар"
+        ? "#FFD700"
+        : color === "Ягаан"
+        ? "#FF69B4"
+        : color === "Хүрэн"
+        ? "#8B4513"
+        : color === "Ягаан"
+        ? "#FF1493"
+        : "#CCCCCC", // Default color
+  }));
 
   // Update dimensions when screen size changes
   useEffect(() => {
@@ -64,42 +97,33 @@ const ProductDetails = ({ route, navigation }) => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // For clothing, we already have size quantities in the product data
-        if (
-          product.category === "Clothing" &&
-          product.sizeQuantity?.clothingSizes
-        ) {
-          setStockData({
-            S: product.sizeQuantity.clothingSizes.s,
-            M: product.sizeQuantity.clothingSizes.m,
-            L: product.sizeQuantity.clothingSizes.l,
-            XL: product.sizeQuantity.clothingSizes.xl,
-            XXL: product.sizeQuantity.clothingSizes.xxl,
+        // Handle stock data based on variants
+        if (product.variants && product.variants.length > 0) {
+          const stockMap = {};
+          product.variants.forEach((variant) => {
+            stockMap[variant.size] = variant.stock;
           });
-        }
-        // For shoes, we need to transform the shoeSizes object
-        else if (
-          product.category === "Shoes" &&
-          product.sizeQuantity?.shoeSizes
-        ) {
-          const transformedSizes = {};
-          Object.entries(product.sizeQuantity.shoeSizes).forEach(
-            ([size, qty]) => {
-              transformedSizes[size] = qty;
-            }
-          );
-          setStockData(transformedSizes);
+          setStockData(stockMap);
+        } else {
+          // For products without variants
+          setStockData({ [product.size]: product.stock });
         }
 
         // Fetch related products
         const relatedResponse = await fetch(
-          "http://192.168.36.181:5000/api/products"
+          "http://10.150.35.107:5000/api/products"
         );
         const relatedData = await relatedResponse.json();
-        const filteredProducts = relatedData.filter(
-          (item) => item._id !== product._id
-        );
-        setRelatedProducts(filteredProducts);
+
+        if (relatedData.success && Array.isArray(relatedData.data)) {
+          const filteredProducts = relatedData.data
+            .filter((item) => item._id !== product._id)
+            .map((item) => ({
+              ...item,
+              image: { url: item.images[0] },
+            }));
+          setRelatedProducts(filteredProducts);
+        }
 
         setLoading(false);
       } catch (error) {
@@ -131,10 +155,58 @@ const ProductDetails = ({ route, navigation }) => {
     }
   }, [relatedProducts]);
 
-  const handleAddToCart = () => {
-    const hasSizes = availableSizes.length > 0;
+  // Get available sizes for selected color
+  const getAvailableSizes = () => {
+    if (!selectedColor) return [];
 
-    if (hasSizes && !selectedSize) {
+    if (product.variants && product.variants.length > 0) {
+      return product.variants
+        .filter((variant) => variant.color === selectedColor)
+        .map((variant) => ({
+          label: variant.size,
+          value: variant.size,
+          stock: variant.stock,
+          isAvailable: variant.stock > 0,
+          displayText:
+            variant.stock > 0
+              ? `${variant.size} (${variant.stock} ширхэг)`
+              : `${variant.size} (Дууссан)`,
+        }));
+    } else if (product.size) {
+      return [
+        {
+          label: product.size,
+          value: product.size,
+          stock: product.stock,
+          isAvailable: product.stock > 0,
+          displayText:
+            product.stock > 0
+              ? `${product.size} (${product.stock} ширхэг)`
+              : `${product.size} (Дууссан)`,
+        },
+      ];
+    }
+    return [];
+  };
+
+  // Reset selected size when color changes
+  useEffect(() => {
+    setSelectedSize(null);
+  }, [selectedColor]);
+
+  const handleAddToCart = () => {
+    if (!selectedColor) {
+      Toast.show({
+        type: "error",
+        text1: "Өнгө сонгоогүй байна",
+        text2: "Бүтээгдэхүүний өнгийг сонгоно уу.",
+        position: "top",
+        topOffset: Platform.OS === "ios" ? 90 : 165,
+      });
+      return;
+    }
+
+    if (!selectedSize) {
       Toast.show({
         type: "error",
         text1: "Хэмжээ сонгоогүй байна",
@@ -145,31 +217,27 @@ const ProductDetails = ({ route, navigation }) => {
       return;
     }
 
-    if (hasSizes) {
-      const sizeKey =
-        product.category === "Clothing"
-          ? selectedSize.split(" ")[0]
-          : selectedSize;
+    const selectedVariant = product.variants?.find(
+      (v) => v.color === selectedColor && v.size === selectedSize
+    );
+    const stock = selectedVariant ? selectedVariant.stock : product.stock;
 
-      if (stockData[sizeKey] && stockData[sizeKey] < quantity) {
-        Toast.show({
-          type: "error",
-          text1: "Нөөц хүрэлцэхгүй байна",
-          text2: `Сонгосон хэмжээнд ${stockData[sizeKey]} ширхэг л үлдсэн байна.`,
-          position: "top",
-          topOffset: Platform.OS === "ios" ? 90 : 165,
-        });
-        return;
-      }
+    if (stock < quantity) {
+      Toast.show({
+        type: "error",
+        text1: "Нөөц хүрэлцэхгүй байна",
+        text2: `Сонгосон хэмжээнд ${stock} ширхэг л үлдсэн байна.`,
+        position: "top",
+        topOffset: Platform.OS === "ios" ? 90 : 165,
+      });
+      return;
     }
 
-    addToCart(product, quantity, hasSizes ? selectedSize : null);
+    addToCart(product, quantity, selectedSize, selectedColor);
     Toast.show({
       type: "success",
       text1: "Сагсанд нэмэгдлээ",
-      text2: `${product.name} ${
-        hasSizes ? `(${selectedSize})` : ""
-      } сагсанд амжилттай нэмэгдлээ.`,
+      text2: `${product.name} ${selectedColor} ${selectedSize} сагсанд амжилттай нэмэгдлээ.`,
       position: "top",
       topOffset: Platform.OS === "ios" ? 90 : 165,
     });
@@ -216,52 +284,13 @@ const ProductDetails = ({ route, navigation }) => {
     });
   };
 
-  const getAvailableSizes = () => {
-    if (product.category === "Clothing") {
-      return [
-        { label: "S (165-170cm)", value: "S (165-170cm)", stock: stockData.S },
-        { label: "M (171-176cm)", value: "M (171-176cm)", stock: stockData.M },
-        { label: "L (177-182cm)", value: "L (177-182cm)", stock: stockData.L },
-        {
-          label: "XL (183-188cm)",
-          value: "XL (183-188cm)",
-          stock: stockData.XL,
-        },
-        {
-          label: "XXL (184-200cm)",
-          value: "XXL (184-200cm)",
-          stock: stockData.XXL,
-        },
-      ].map((size) => ({
-        ...size,
-        isAvailable: size.stock > 0,
-        displayText:
-          size.stock > 0
-            ? `${size.label} (${size.stock} ширхэг)`
-            : `${size.label} (Дууссан)`,
-      }));
-    } else if (product.category === "Shoes") {
-      return Object.entries(stockData)
-        .sort(([sizeA], [sizeB]) => parseInt(sizeA) - parseInt(sizeB))
-        .map(([size, stock]) => ({
-          label: size,
-          value: size,
-          stock,
-          isAvailable: stock > 0,
-          displayText:
-            stock > 0 ? `${size} (${stock} ширхэг)` : `${size} (Дууссан)`,
-        }));
-    }
-    return [];
-  };
-
   const availableSizes = getAvailableSizes();
-  const hasSizes = availableSizes.length > 0; // <-- энэ мөрийг нэмнэ
+  const hasSizes = availableSizes.length > 0;
 
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="blue" />
+        <ActivityIndicator size="large" color="#6C63FF" />
       </View>
     );
   }
@@ -372,38 +401,76 @@ const ProductDetails = ({ route, navigation }) => {
               </Text>
               <Text style={styles.description}>{product.description}</Text>
 
-              <Text style={styles.label}>Хэмжээ сонгох:</Text>
-              <View style={styles.webSizeButtonsContainer}>
-                {availableSizes.map((size) => (
+              {/* Color Selection */}
+              <Text style={styles.colorLabel}>Өнгө сонгох:</Text>
+              <View style={styles.webColorButtonsContainer}>
+                {uniqueColors.map((colorObj) => (
                   <TouchableOpacity
-                    key={size.value}
+                    key={colorObj.value}
                     style={[
-                      styles.sizeButton,
-                      !size.isAvailable && styles.outOfStockButton,
-                      selectedSize === size.value && styles.selectedSizeButton,
-                      {
-                        width: product.category === "Clothing" ? 150 : 80,
-                        margin: 5,
-                      },
+                      styles.webColorButton,
+                      selectedColor === colorObj.value &&
+                        styles.selectedColorButton,
                     ]}
-                    onPress={() =>
-                      size.isAvailable && setSelectedSize(size.value)
-                    }
-                    disabled={!size.isAvailable}
+                    onPress={() => setSelectedColor(colorObj.value)}
                   >
-                    <Text
+                    <View
                       style={[
-                        styles.sizeButtonText,
-                        !size.isAvailable && styles.outOfStockButtonText,
-                        selectedSize === size.value &&
-                          styles.selectedSizeButtonText,
+                        styles.colorCircle,
+                        { backgroundColor: colorObj.color },
+                        selectedColor === colorObj.value &&
+                          styles.selectedColorCircle,
                       ]}
                     >
-                      {size.displayText}
+                      {selectedColor === colorObj.value && (
+                        <View style={styles.selectedColorInner} />
+                      )}
+                    </View>
+                    <Text style={styles.webColorButtonText}>
+                      {colorObj.display}
                     </Text>
                   </TouchableOpacity>
                 ))}
               </View>
+
+              {/* Size Selection - Only show if color is selected */}
+              {selectedColor && (
+                <>
+                  <Text style={styles.label}>Хэмжээ сонгох:</Text>
+                  <View style={styles.webSizeButtonsContainer}>
+                    {getAvailableSizes().map((size) => (
+                      <TouchableOpacity
+                        key={size.value}
+                        style={[
+                          styles.sizeButton,
+                          !size.isAvailable && styles.outOfStockButton,
+                          selectedSize === size.value &&
+                            styles.selectedSizeButton,
+                          {
+                            width: product.category === "Clothing" ? 150 : 80,
+                            margin: 5,
+                          },
+                        ]}
+                        onPress={() =>
+                          size.isAvailable && setSelectedSize(size.value)
+                        }
+                        disabled={!size.isAvailable}
+                      >
+                        <Text
+                          style={[
+                            styles.sizeButtonText,
+                            !size.isAvailable && styles.outOfStockButtonText,
+                            selectedSize === size.value &&
+                              styles.selectedSizeButtonText,
+                          ]}
+                        >
+                          {size.displayText}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
 
               <Text style={styles.label}>Тоо ширхэг:</Text>
               <View style={styles.webQuantityContainer}>
@@ -589,36 +656,77 @@ const ProductDetails = ({ route, navigation }) => {
           <Text style={styles.price}>{product.price.toLocaleString()}₮</Text>
           <Text style={styles.description}>{product.description}</Text>
 
-          <Text style={styles.label}>Хэмжээ сонгох:</Text>
-          <View style={styles.sizeButtonsContainer}>
-            {availableSizes.map((size) => (
+          {/* Color Selection */}
+          <Text style={styles.colorLabel}>Өнгө сонгох:</Text>
+          <View style={styles.colorButtonsContainer}>
+            {uniqueColors.map((colorObj) => (
               <TouchableOpacity
-                key={size.value}
-                style={[
-                  styles.sizeButton,
-                  !size.isAvailable && styles.outOfStockButton,
-                  selectedSize === size.value && styles.selectedSizeButton,
-                  {
-                    width: product.category === "Clothing" ? 120 : 70,
-                    marginHorizontal: 5,
-                  },
-                ]}
-                onPress={() => size.isAvailable && setSelectedSize(size.value)}
-                disabled={!size.isAvailable}
+                key={colorObj.value}
+                style={styles.colorButtonWrapper}
+                onPress={() => setSelectedColor(colorObj.value)}
               >
-                <Text
+                <View
                   style={[
-                    styles.sizeButtonText,
-                    !size.isAvailable && styles.outOfStockButtonText,
-                    selectedSize === size.value &&
-                      styles.selectedSizeButtonText,
+                    styles.colorCircle,
+                    { backgroundColor: colorObj.color },
+                    selectedColor === colorObj.value &&
+                      styles.selectedColorCircle,
                   ]}
                 >
-                  {size.displayText}
+                  {selectedColor === colorObj.value && (
+                    <View style={styles.selectedColorInner} />
+                  )}
+                </View>
+                <Text
+                  style={[
+                    styles.colorName,
+                    selectedColor === colorObj.value &&
+                      styles.selectedColorName,
+                  ]}
+                >
+                  {colorObj.display}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
+
+          {/* Size Selection - Only show if color is selected */}
+          {selectedColor && (
+            <>
+              <Text style={styles.label}>Хэмжээ сонгох:</Text>
+              <View style={styles.sizeButtonsContainer}>
+                {getAvailableSizes().map((size) => (
+                  <TouchableOpacity
+                    key={size.value}
+                    style={[
+                      styles.sizeButton,
+                      !size.isAvailable && styles.outOfStockButton,
+                      selectedSize === size.value && styles.selectedSizeButton,
+                      {
+                        width: product.category === "Clothing" ? 120 : 70,
+                        marginHorizontal: 5,
+                      },
+                    ]}
+                    onPress={() =>
+                      size.isAvailable && setSelectedSize(size.value)
+                    }
+                    disabled={!size.isAvailable}
+                  >
+                    <Text
+                      style={[
+                        styles.sizeButtonText,
+                        !size.isAvailable && styles.outOfStockButtonText,
+                        selectedSize === size.value &&
+                          styles.selectedSizeButtonText,
+                      ]}
+                    >
+                      {size.displayText}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          )}
 
           <Text style={styles.label}>Тоо ширхэг:</Text>
           <View style={styles.quantityContainer}>
@@ -703,24 +811,6 @@ const ProductDetails = ({ route, navigation }) => {
             ]}
           >
             Сагслах
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.orderButton,
-            hasSizes && !selectedSize && styles.disabledButton,
-          ]}
-          onPress={orderNow}
-          disabled={hasSizes && !selectedSize}
-        >
-          <Text
-            style={[
-              styles.orderButtonText,
-              hasSizes && !selectedSize && styles.disabledButtonText,
-            ]}
-          >
-            Захиалах
           </Text>
         </TouchableOpacity>
       </View>
@@ -929,7 +1019,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 15,
-    width: "48%",
+    width: "100%",
     justifyContent: "center",
   },
   orderButton: {
@@ -1085,6 +1175,101 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     boxShadow: "0px -2px 10px rgba(0, 0, 0, 0.1)",
     zIndex: 1000,
+  },
+  webColorButtonsContainer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    flexWrap: "wrap",
+    marginBottom: 10,
+  },
+  webColorButton: {
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 5,
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+    marginHorizontal: 5,
+  },
+  selectedColorButton: {
+    borderColor: "#000",
+    backgroundColor: "#000",
+  },
+  webColorButtonText: {
+    fontSize: 14,
+    color: "#000",
+    textAlign: "center",
+  },
+  selectedColorButtonText: {
+    color: "#fff",
+  },
+  colorButtonsContainer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    flexWrap: "wrap",
+    marginBottom: 25,
+    paddingHorizontal: 15,
+    gap: 15,
+  },
+  colorButtonWrapper: {
+    alignItems: "center",
+    width: 80,
+  },
+  colorCircle: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 1.5,
+    borderColor: "#E0E0E0",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 8,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  selectedColorCircle: {
+    borderWidth: 2,
+    borderColor: "#000",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  selectedColorInner: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#fff",
+    backgroundColor: "rgba(255, 255, 255, 0.3)",
+  },
+  colorName: {
+    fontSize: 13,
+    color: "#666",
+    textAlign: "center",
+    fontWeight: "500",
+  },
+  selectedColorName: {
+    color: "#000",
+    fontWeight: "600",
+  },
+  colorLabel: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 15,
+    color: "#333",
   },
 });
 
